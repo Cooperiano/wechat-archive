@@ -13,11 +13,12 @@ import sqlite3
 import shutil
 import sys
 import tempfile
+import uuid
 from .cipher import load_cipher
 from .codec import decode_text
 from .snapshot import _capture_source, parse_wal, SQLCipherPageReader, _write_snapshot
 from .vendor import appmsg, system_messages
-from .storage import relative_database, separated
+from .storage import relative_database, separated, safe_sqlite_files
 
 def now():
     return datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(timespec='seconds')
@@ -47,6 +48,7 @@ def atomic_text(path, value):
 
 def publish_archive(output, database, metadata):
     """Stage all data before commit; roll back the entire set on write failure."""
+    safe_sqlite_files(output / 'archive.sqlite')
     staging = Path(tempfile.mkdtemp(prefix='.publish-', dir=output))
     retain = False
     try:
@@ -174,6 +176,12 @@ CREATE TABLE messages(message_key TEXT PRIMARY KEY,room_id TEXT,sender_id TEXT,s
 CREATE INDEX messages_room_time ON messages(room_id,create_time);
 CREATE TABLE source_records(source_db TEXT,source_table TEXT,local_id INTEGER,message_key TEXT,
  raw_json TEXT,PRIMARY KEY(source_db,source_table,local_id));
+CREATE INDEX source_records_key ON source_records(message_key);
+CREATE TABLE source_fingerprints(source_db TEXT,source_table TEXT,local_id INTEGER,fingerprint TEXT,
+ PRIMARY KEY(source_db,source_table,local_id));
+CREATE TABLE archive_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE change_feed(seq INTEGER PRIMARY KEY AUTOINCREMENT,message_key TEXT NOT NULL,
+ operation TEXT NOT NULL CHECK(operation IN ('upsert','delete')));
 '''
 
 
@@ -207,6 +215,12 @@ def parse_snapshots(snapshots, output):
     snapshots = Path(snapshots).expanduser().resolve()
     if OUT.resolve().is_relative_to(snapshots.resolve()):
         raise ValueError('snapshot_output_overlap')
+    existing = OUT / 'archive.sqlite'
+    safe_sqlite_files(existing)
+    if existing.exists():
+        with closing(sqlite3.connect(existing.resolve().as_uri() + '?mode=ro', uri=True)) as prior:
+            if prior.execute('PRAGMA journal_mode').fetchone()[0].lower() == 'wal':
+                raise ValueError('continuous_archive_rebuild_requires_new_output')
     manifest = json.loads((snapshots / 'snapshot-status.json').read_text())
     source_id = manifest.get('source_id') or hashlib.sha256(os.fsencode(snapshots.resolve())).hexdigest()
     identity_file = OUT / 'source-info.json'
@@ -284,6 +298,8 @@ def parse_snapshots(snapshots, output):
                                        f'{room}:{rel}:{table}:local:{local_id}')
                             raw = raw_json(row)
                             target.execute('INSERT INTO source_records VALUES(?,?,?,?,?)', (rel, table, local_id, msg_key, raw))
+                            target.execute('INSERT INTO source_fingerprints VALUES(?,?,?,?)',
+                                           (rel, table, local_id, hashlib.sha256(raw.encode()).hexdigest()))
                             source_rows += 1
                             db_rows += 1
                             target.execute('UPDATE groups SET source_rows=source_rows+1 WHERE room_id=?', (room,))
@@ -329,6 +345,13 @@ def parse_snapshots(snapshots, output):
                                 '媒体记录和元数据已保留，媒体本体不在此页面解码']}
         if stats['state'] == 'partial':
             raise ValueError('unsupported_message_schema')
+        with closing(sqlite3.connect(temp_path)) as metadata, metadata:
+            metadata.executemany('INSERT INTO archive_meta VALUES(?,?)', [
+                ('source_id', source_id), ('generation', uuid.uuid4().hex), ('revision', '0'),
+                ('status', json.dumps(stats, ensure_ascii=False)),
+                ('contacts', json.dumps(contacts, ensure_ascii=False)),
+                ('collector_state', json.dumps(manifest.get('collector_state', {}))),
+            ])
         publish_archive(OUT, temp_path, {
             'database-catalog.json': catalog, 'contacts.json': contacts,
             'status.json': stats, 'source-info.json': {'source_id': source_id,

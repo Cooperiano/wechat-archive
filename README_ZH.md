@@ -1,12 +1,12 @@
 # WeChatArchive：Windows / macOS 本地微信归档
 
-一个开源仓库、同一套 Python 核心、两个平台启动包。v0.1.0 是便携源码工具预览版，提供显式验钥与初始化、认证数据库/WAL 快照、全消息表解析、原始行保留和分页聊天浏览。
+一个开源仓库、同一套 Python 核心、两个平台启动包。v0.1.0 是便携源码工具预览版，提供显式验钥与初始化、认证数据库/WAL 快照、增量归档、按会话和日期整理上下文、原始行保留及分页聊天浏览。
 
 只处理本人拥有或已获授权的数据。归档、密钥和聊天正文都留在本机。
 
 ## 多种封装，共用一个核心
 
-当前提供命令行、本地网页与只读 API；两个平台包共用同一个核心。桌面 App、MCP 和后台服务可在这套核心上接入。详见[本地 API 与封装关系](docs/local-api.md)。
+当前提供命令行、本地网页、只读 API 和当前用户的登录启动项；两个平台包共用同一个核心。桌面 App 和 MCP 可在这套核心上接入。详见[本地 API 与封装关系](docs/local-api.md)。
 
 ## 平台交付
 
@@ -53,6 +53,27 @@ python -m wechat_archive archive --source "/path/to/db_storage" --key-store "/pr
 
 Mac 使用钥匙串，Windows 使用当前用户 DPAPI。保护存储不能跨设备直接使用；程序不回显密钥。
 
+## 持续更新与本地上下文
+
+已有受保护密钥后，使用 JSON 配置连接现有源、归档输出和密钥文件。以下命令均应使用安装本项目的同一个虚拟环境解释器；路径仅为示例：
+
+```sh
+python -m wechat_archive watch --config "/private/example/runner.json" --once
+python -m wechat_archive watch --config "/private/example/runner.json"
+python -m wechat_archive process-context --archive "/private/example/archive-output/archive.sqlite" --output "/private/example/context-output" --batch-size 10000
+```
+
+`--once` 只运行一轮；省略后持续轮询。电脑开机、用户已登录、系统保持唤醒且源微信能够接收新消息时，持续归档才会更新。第一版上下文处理按会话和日期建立可追溯的本地索引，不生成语义摘要，也不涵盖未导入的外部来源。
+
+若需随当前用户登录自动运行：
+
+```sh
+python -m wechat_archive service-install --config "/private/example/runner.json"
+python -m wechat_archive service-uninstall
+```
+
+macOS 使用当前用户 LaunchAgent，Windows 使用当前用户计划任务，无需管理员权限。安装项沿用当前虚拟环境的 Python 和依赖；卸载保留归档、密钥及配置。持续运行不会重新取钥、重新签名或重启微信。配置字段、状态文件和故障重试见[本地持续归档说明](docs/continuous.md)。
+
 ## 首次取钥：各端独立
 
 Windows 采用已有适配的官方进程内存扫描器，微信需已登录运行。当前权限不足时可能需要管理员权限。
@@ -86,7 +107,7 @@ python -m wechat_archive parse --snapshots "/private/snapshot-set" --output "/pr
 - DB/WAL 是逐库一致快照，不是全部数据库同时冻结。
 - 三类微信专用全文索引可能需要 `MMFtsTokenizer`，无法完成一般 SQLite 完整性检查时明确标注，不冒记为通过。
 - 当前文字、压缩正文、分享卡片和系统事件可解析；媒体记录保留，媒体本体未解码。
-- 本版不包含持续后台采集、跨设备合并、媒体播放或原生桌面安装包。
+- 本版不包含跨设备合并、媒体播放、语义摘要或原生桌面安装包。持续采集依赖本机登录、唤醒和现有密钥；登录启动项不是系统级服务。
 - 分页界面已经做合成状态/异步/分页测试；尚无真实浏览器界面验收。CI 的 Windows/Mac 测试不等于任意微信版本真机取钥通过。
 
 ## 测试与打包

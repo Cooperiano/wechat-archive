@@ -40,10 +40,36 @@ def execute(argv=None):
     p.add_argument('--allow-wechat-restart', action='store_true')
     p = sub.add_parser('import-keys', help='验钥后存入本机凭据存储')
     p.add_argument('--source', required=True); p.add_argument('--input', required=True); p.add_argument('--state', required=True)
+    p = sub.add_parser('watch', help='持续增量归档并处理上下文')
+    p.add_argument('--config', required=True); p.add_argument('--once', action='store_true')
+    p = sub.add_parser('process-context', help='逐批整理已有归档上下文')
+    p.add_argument('--archive', required=True); p.add_argument('--output', required=True)
+    p.add_argument('--batch-size', type=int, default=10000)
+    p = sub.add_parser('service-install', help='当前用户登录后自动运行')
+    p.add_argument('--config', required=True)
+    sub.add_parser('service-uninstall', help='停止自启并保留数据')
     args = parser.parse_args(argv)
     for name in ['archive', 'source', 'output', 'snapshots', 'state', 'input', 'keys_json', 'key_store']:
         if getattr(args, name, None):
             setattr(args, name, str(Path(getattr(args, name)).expanduser().resolve()))
+    if args.command in {'service-install', 'service-uninstall'}:
+        from .service import install, uninstall
+        print(json.dumps(install(args.config) if args.command == 'service-install' else uninstall())); return 0
+    if args.command == 'process-context':
+        from .context import process_archive
+        print(json.dumps(process_archive(args.archive,args.output,batch_size=args.batch_size))); return 0
+    if args.command == 'watch':
+        import signal, threading
+        from .runner import run
+        stop = threading.Event()
+        old = {}
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            old[sig] = signal.signal(sig, lambda *_args: stop.set())
+        try:
+            status = run(args.config,once=args.once,stop_event=stop)
+            print(json.dumps(status)); return 0 if status.get('state') in {'complete','partial','degraded'} or stop.is_set() else 1
+        finally:
+            for sig, handler in old.items(): signal.signal(sig,handler)
     if args.command == 'wizard':
         wizard(); return 0
     if args.command == 'serve':
@@ -99,6 +125,7 @@ def main():
             'official_wechat_did_not_quit', 'source_output_overlap',
             'snapshot_output_overlap', 'output_belongs_to_another_source',
             'archive_recovery_required',
+            'continuous_archive_rebuild_requires_new_output',
         }:
             result['reason'] = str(error)
         print(json.dumps(result), file=sys.stderr)

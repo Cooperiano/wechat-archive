@@ -2,9 +2,9 @@
 
 A local WeChat 4 archive for **Windows and macOS**, with one Python core and separate platform launch packages. [中文说明](README_ZH.md).
 
-The v0.1.0 preview provides explicit key import/bootstrap, authenticated DB/WAL snapshots, full message-table parsing, raw-row retention, and a paginated local chat viewer. Only process data you own or are authorized to access.
+The v0.2.0 preview adds continuous authenticated capture, transactional message changes, resumable conversation/day context indexing, and current-user login services to the existing archive and viewer. Only process data you own or are authorized to access.
 
-The same core exposes a CLI, local web viewer and authenticated read-only HTTP API. Desktop, MCP and background-service shells can build on it. See [local API and packaging](docs/local-api.md).
+The same core exposes a CLI, local web viewer, authenticated read-only HTTP API and background runner. Desktop and MCP shells can build on it. See [local API and packaging](docs/local-api.md) and [continuous operation](docs/continuous.md).
 
 ## Install from source
 
@@ -44,13 +44,25 @@ python -m wechat_archive bootstrap --source "/path/to/db_storage" --state "/priv
 
 Run macOS initialization with the official `/Applications/WeChat.app` open. It copies/signs only a temporary app, quits the official instance, captures/verifies candidates, stops owned copy processes and attempts to restore the official instance. Cancellation, permission denial and app-version changes can fail. The integrated wrapper is experimental; original capture and reader cores have prior real-device evidence, while wrapper recovery is tested with synthetic fixtures. SIP is not disabled. Windows bootstrap uses the same command without the macOS restart flag.
 
+## Continuous operation
+
+After importing verified keys, create a private JSON configuration with absolute `source`, `output`, `key_store` and optional `context_output` paths. See the [Chinese configuration guide](docs/continuous.md). The default interval is 120 seconds; processing checkpoints survive restarts.
+
+```sh
+python -m wechat_archive watch --config "/private/runner.json" --once
+python -m wechat_archive service-install --config "/private/runner.json"
+python -m wechat_archive service-uninstall
+```
+
+Use the virtual environment's Python. macOS uses a user LaunchAgent; Windows uses a least-privilege logon task. The computer must be awake with the user logged in and source databases available. Services reuse protected keys and never bootstrap keys or restart WeChat. Context processing currently organizes evidence by conversation/day with local search; semantic summaries and additional sources are future adapters.
+
 ## Limits and validation
 
 - Full local database scope includes service/system/unmapped conversations. This does not retrieve cloud or other-device history.
 - Per-database consistent snapshots are not a simultaneous account-wide freeze.
 - Dedicated WCDB FTS tokenizers can prevent SQLite integrity checks. Such indexes are retained and explicitly marked `extension_required`; successful page authentication is separate from successful SQLite validation.
 - Media records and raw fields are retained; media bodies are not decoded in this preview.
-- No continuous collector, native installers, cross-device merge, or media playback is included.
+- Native installers, cross-device merge, semantic summarization and media playback are not included.
 - The public test suite uses synthetic databases, mock Keychain, a public AES vector, and an in-memory UI fixture. It does not require personal WeChat data or actually bootstrap WeChat in CI.
 
 ```sh

@@ -6,14 +6,17 @@ from pathlib import Path
 import secrets
 import sqlite3
 from urllib.parse import parse_qs, urlsplit
+from .storage import safe_sqlite_files
 
 WEB = Path(__file__).parent / 'web'
 
 
 def connect(path):
-    conn = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro&immutable=1', uri=True)
+    safe_sqlite_files(path)
+    conn = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA query_only=ON')
+    conn.execute('BEGIN')
     return conn
 
 
@@ -110,7 +113,9 @@ class Handler(BaseHTTPRequestHandler):
                                         where, values, 'create_time DESC,local_id DESC,message_key', page)
                 elif url.path == '/api/status':
                     status = self.server.archive.with_name('status.json')
-                    result = json.loads(status.read_text()) if status.is_file() else {
+                    meta = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_meta'").fetchone()
+                    current = conn.execute("SELECT value FROM archive_meta WHERE key='status'").fetchone() if meta else None
+                    result = json.loads(current[0]) if current else json.loads(status.read_text(encoding='utf-8')) if status.is_file() else {
                         'state': 'existing_archive', 'conversations': conn.execute('SELECT count(*) FROM groups').fetchone()[0],
                         'archived_messages': conn.execute('SELECT count(*) FROM messages').fetchone()[0]}
                 else:

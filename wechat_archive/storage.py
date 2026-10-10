@@ -4,6 +4,20 @@ import base64
 import os
 import subprocess
 import sys
+import stat
+
+
+def safe_sqlite_files(path):
+    """Reject aliased or foreign database files before SQLite can touch sidecars."""
+    path = Path(path)
+    for file in (path, *(Path(str(path) + suffix) for suffix in ('-wal', '-shm', '-journal'))):
+        try:
+            info = file.lstat()
+        except FileNotFoundError:
+            continue
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
+                (os.name == 'posix' and info.st_uid != os.getuid())):
+            raise ValueError('unsafe_archive_file')
 
 
 def private_directory(path):
