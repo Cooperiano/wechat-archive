@@ -67,6 +67,7 @@ class ServiceTests(unittest.TestCase):
                                       'key_store': str(self.root / 'keys.protected')}))
         with patch.object(service.sys, 'platform', 'darwin'), \
              patch.object(service.sys, 'executable', str(venv_python)), \
+             patch.object(service.os, 'getuid', return_value=501, create=True), \
              patch.object(service.Path, 'home', return_value=self.root), \
              patch.object(service.Path, 'is_file', return_value=True), \
              patch.object(service, '_run') as command:
