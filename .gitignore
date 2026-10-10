@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.DS_Store
+private/
+state/
+*.db
+*.sqlite*
+*.log
+*.pem
+*.p12
+.env
+keys*.json
