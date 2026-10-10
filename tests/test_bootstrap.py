@@ -37,7 +37,12 @@ class BootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)/'private';root.mkdir()
             subprocess.run(['icacls',str(root),'/grant','*S-1-1-0:(OI)(CI)F'],capture_output=True,check=True)
-            storage.private_directory(root)
+            try:
+                storage.private_directory(root)
+            except subprocess.CalledProcessError as error:
+                # This test touches only a generated fixture; expose OS diagnostics
+                # here, while the production CLI keeps subprocess output private.
+                self.fail(error.stderr.decode(errors='replace'))
             result=subprocess.run(['icacls',str(root)],capture_output=True,check=True).stdout.decode(errors='replace')
             self.assertNotIn('Everyone',result)
             self.assertNotIn('S-1-1-0',result)
