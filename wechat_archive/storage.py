@@ -31,11 +31,12 @@ $acl=[System.Security.AccessControl.DirectorySecurity]::new()
 $acl.SetAccessRuleProtection($true,$false)
 $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow')
 $acl.AddAccessRule($rule)
-Set-Acl -LiteralPath $env:WECHAT_ARCHIVE_DIRECTORY -AclObject $acl
+[System.IO.Directory]::SetAccessControl($env:WECHAT_ARCHIVE_DIRECTORY,$acl)
 $items=@(Get-Item -LiteralPath $env:WECHAT_ARCHIVE_DIRECTORY)+@(Get-ChildItem -LiteralPath $env:WECHAT_ARCHIVE_DIRECTORY -Force -Recurse)
 foreach($item in $items){
  if(($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0){throw 'unsafe_reparse_point'}
- $rules=(Get-Acl -LiteralPath $item.FullName).GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])
+ if($item.PSIsContainer){$read=[System.IO.Directory]::GetAccessControl($item.FullName)}else{$read=[System.IO.File]::GetAccessControl($item.FullName)}
+ $rules=$read.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])
  foreach($entry in $rules){if($entry.AccessControlType -eq 'Allow' -and $entry.IdentityReference.Value -ne $sid.Value){throw 'unsafe_existing_access_rule'}}
 }
 '''
