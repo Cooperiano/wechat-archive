@@ -49,3 +49,9 @@ python -m wechat_archive service-uninstall
 手动运行时用 `Ctrl+C` 结束进程。调用方也可传入 `threading.Event` 作为 `stop_event`，设置事件即可在当前轮结束后或等待期间退出。运行器用 `output/.watch.lock` 防止同一个输出目录同时启动第二个持续归档进程。它将 `output/watch-status.json` 写为仅含固定状态、时间、计数和固定原因代码的本地状态文件；不包含源路径、消息 ID、正文、密钥或异常详情。`complete` 表示本轮采集与启用的上下文处理均完成；`partial/context_backlog` 表示上下文还有待处理记录；`waiting` 或 `retrying` 表示会在后续轮次重试。状态文件的最近成功时间表示上一次完整轮次，而不是当前轮次的成功证明。
 
 归档数据和密钥都应留在当前设备的私有目录。持续运行和登录启动均不上传或发布数据。
+
+## macOS 后台访问权限
+
+前台读取成功不保证用户登录服务可以访问其他 App 的数据。系统可能向后台解释器返回 `PermissionError`；运行器会显示 `waiting/source_permission_required` 并重试，不将权限拒绝当成没有数据库，也不会扩大系统权限。钥匙串不可用时另显示 `waiting/key_unavailable`。
+
+后台启动权限必须在本机按实际运行程序授权。完全磁盘访问是一项较广的权限，不能由程序自行开启；不要为了读取微信而默认授权所有解释器。正式桌面封装应以稳定应用身份完成独立授权。先通过已获授权的前台环境运行 `watch` 也可以持续处理，但不代表下次登录自启已通过验收。

@@ -15,7 +15,9 @@ from .storage import private_directory, relative_database, separated
 def databases(source):
     root = Path(source).expanduser().resolve()
     found = []
-    for directory, folders, files in os.walk(root, followlinks=False):
+    def denied(error):
+        raise error
+    for directory, folders, files in os.walk(root, followlinks=False, onerror=denied):
         if any((Path(directory) / name).is_symlink() for name in folders):
             raise ValueError('source_contains_symlink')
         for name in sorted(files):

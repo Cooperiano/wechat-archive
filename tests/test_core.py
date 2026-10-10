@@ -39,6 +39,14 @@ def fixtures(root, count=201, source_id='synthetic-account-a'):
 
 
 class CoreTests(unittest.TestCase):
+    def test_database_walk_reports_permission_denial(self):
+        from wechat_archive.pipeline import databases
+        def walk(*args, **kwargs):
+            kwargs['onerror'](PermissionError('synthetic denied directory'))
+            return iter(())
+        with patch('wechat_archive.pipeline.os.walk', side_effect=walk):
+            with self.assertRaises(PermissionError):
+                databases(Path(tempfile.gettempdir()) / 'synthetic-private-source')
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.root=Path(self.temp.name)
     def tearDown(self):

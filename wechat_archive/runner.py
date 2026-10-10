@@ -151,6 +151,8 @@ def _cycle(config: RunnerConfig, *, collect, load, process=None) -> dict:
         return {'state': 'waiting', 'reason': 'key_unavailable', 'updated_at': started, 'counts': {}}
     try:
         collected = collect(config.source, config.output, payload)
+    except PermissionError:
+        return {'state': 'waiting', 'reason': 'source_permission_required', 'updated_at': started, 'counts': {}}
     except Exception:
         return {'state': 'retrying', 'reason': 'capture_failed', 'updated_at': started, 'counts': {}}
     if not isinstance(collected, dict) or collected.get('state') not in {'updated', 'idle'}:

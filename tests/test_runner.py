@@ -130,6 +130,14 @@ class RunnerTests(unittest.TestCase):
         with CollectorLock(self.output / '.watch.lock'):
             pass
 
+    def test_source_permission_denial_is_explicit_and_sanitized(self):
+        def denied(*_args):
+            raise PermissionError('private source details')
+        result = _cycle(self.config, collect=denied, load=lambda _: {})
+        self.assertEqual(result['state'], 'waiting')
+        self.assertEqual(result['reason'], 'source_permission_required')
+        self.assertNotIn('private source details', json.dumps(result))
+
     def test_stop_event_and_existing_lock(self):
         with self.fake_modules(lambda *_: {'state': 'idle'}), \
              patch('wechat_archive.runner.load_keys', return_value={}):
