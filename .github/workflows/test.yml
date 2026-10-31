@@ -31,3 +31,4 @@ jobs:
         with:
           name: source-portable-${{ matrix.os }}
           path: package-output/*
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 90 || 7 }}
